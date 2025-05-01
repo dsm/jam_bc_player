@@ -29,16 +29,6 @@
 #ifndef INC_JBICOMP_H
 #define INC_JBICOMP_H
 
-#if PORT==DOS
-
-void jbi_uncompress_page
-(
-	int variable_id,
-	int page,
-	int version
-);
-
-#else
 
 unsigned long jbi_uncompress
 (
@@ -49,6 +39,6 @@ unsigned long jbi_uncompress
 	int version
 );
 
-#endif /* PORT==DOS */
+
 
 #endif /* INC_JBICOMP_H */

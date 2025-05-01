@@ -28,7 +28,11 @@
 /*                                                                           */
 /*****************************************************************************/
 
-#include "jbiport.h"
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+
+
 #include "jbiexprt.h"
 #include "jbijtag.h"
 #include "jbicomp.h"
@@ -38,8 +42,6 @@
 /*	MACROS																	*/
 /*																			*/
 /****************************************************************************/
-
-#define NULL 0
 
 #define JBI_STACK_SIZE 128
 
@@ -71,109 +73,41 @@
 /*																			*/
 /****************************************************************************/
 
-#if PORT==DOS
-/*
-*	jbi_program is a global pointer used by macros GET_BYTE, GET_WORD, and
-*	GET_DWORD to read data from the JBC file
-*/
-PROGRAM_PTR jbi_program;
-#endif
-
 /****************************************************************************/
 /*																			*/
 /*	UTILITY FUNCTIONS														*/
 /*																			*/
 /****************************************************************************/
 
-int jbi_strlen(char *string)
+unsigned long long jbi_strlen(char *string)
 {
-	int len = 0;
-
-	while (string[len] != '\0') ++len;
-
-	return (len);
+	return strlen(string);
 }
 
 long jbi_atol(char *buffer)
 {
-	long result = 0L;
-	int index = 0;
-
-	while ((buffer[index] >= '0') && (buffer[index] <= '9'))
-	{
-		result = (result * 10) + (buffer[index] - '0');
-		++index;
-	}
-
-	return (result);
+	return atol(buffer);
 }
 
 void jbi_ltoa(char *buffer, long number)
 {
-	int index = 0;
-	int rev_index = 0;
-	char reverse[32];
-
-	if (number < 0L)
-	{
-		buffer[index++] = '-';
-		number = 0 - number;
-	}
-	else if (number == 0)
-	{
-		buffer[index++] = '0';
-	}
-
-	while (number != 0)
-	{
-		reverse[rev_index++] = (char) ((number % 10) + '0');
-		number /= 10;
-	}
-
-	while (rev_index > 0)
-	{
-		buffer[index++] = reverse[--rev_index];
-	}
-
-	buffer[index] = '\0';
+	ltoa(number, buffer, 10);
 }
 
 char jbi_toupper(char ch)
 {
-	return ((char) (((ch >= 'a') && (ch <= 'z')) ? (ch + 'A' - 'a') : ch));
+	return (char) toupper((unsigned char) ch);
 }
 
 int jbi_stricmp(char *left, char *right)
 {
-	int result = 0;
-	char l, r;
-
-	do
-	{
-		l = jbi_toupper(*left);
-		r = jbi_toupper(*right);
-		result = l - r;
-		++left;
-		++right;
-	}
-	while ((result == 0) && (l != '\0') && (r != '\0'));
-
-	return (result);
+	return stricmp(left, right);
 }
 
 void jbi_strncpy(char *left, char *right, int count)
 {
-	char ch;
-
-	do
-	{
-		*left = *right;
-		ch = *right;
-		++left;
-		++right;
-		--count;
-	}
-	while ((ch != '\0') && (count != 0));
+	strncpy(left, right, count);
+	left[count - 1] = '\0'; // Ensure null termination
 }
 
 void jbi_make_dword(unsigned char *buf, unsigned long num)
@@ -268,18 +202,13 @@ JBI_RETURN_TYPE jbi_execute
 	int length;
 	int reverse;
 
-#if PORT==DOS
-	char name[33];
-#else
+
 	char *name;
-#endif
+
 
 	jbi_workspace = workspace;
 	jbi_workspace_size = workspace_size;
 
-#if PORT==DOS
-	jbi_program = program;
-#endif
 
 	/*
 	*	Read header information
@@ -375,16 +304,7 @@ JBI_RETURN_TYPE jbi_execute
 				else if ((attributes[i] & 0x1e) == 0x0e)
 				{
 					/* initialized compressed Boolean array */
-#if PORT==DOS
-					/* for DOS port, get the size but do not uncompress */
-					long_index = data_section + value;
-					uncompressed_size =
-						(((unsigned long) GET_BYTE(long_index)) |
-						(((unsigned long) GET_BYTE(long_index + 1L)) << 8L) |
-						(((unsigned long) GET_BYTE(long_index + 2L)) << 16L) |
-						(((unsigned long) GET_BYTE(long_index + 3L)) << 24L));
-					variable_size[i] = uncompressed_size;
-#else
+
 					uncompressed_size = jbi_get_dword(
 						&program[data_section + value]);
 
@@ -417,43 +337,14 @@ JBI_RETURN_TYPE jbi_execute
 							variable_size[i] = uncompressed_size * 8L;
 						}
 					}
-#endif
+
 				}
 				else if ((attributes[i] & 0x1e) == 0x0c)
 				{
 					/* initialized Boolean array */
-#if PORT==DOS
-					/* flag attributes so that memory is freed */
-					attributes[i] |= 0x80;
 
-					if (variable_size[i] > 0)
-					{
-						unsigned int size = (unsigned int)
-							((variable_size[i] + 7L) / 8L);
-
-						variables[i] = (long) jbi_malloc(size);
-
-						if (variables[i] == NULL)
-						{
-							status = JBIC_OUT_OF_MEMORY;
-						}
-						else
-						{
-							unsigned char *p = (unsigned char *) variables[i];
-							/* copy array values into buffer */
-							for (j = 0; j < size; ++j)
-							{
-								p[j] = GET_BYTE(data_section + value + j);
-							}
-						}
-					}
-					else
-					{
-						variables[i] = 0;
-					}
-#else
 					variables[i] = value + data_section + (long) program;
-#endif
+
 				}
 				else if ((attributes[i] & 0x1c) == 0x1c)
 				{
@@ -539,15 +430,8 @@ JBI_RETURN_TYPE jbi_execute
 					offset = (unsigned int) (symbol_table + ((11 + delta) * i));
 					name_id = (version == 0) ? GET_WORD(offset + 1) :
 						GET_DWORD(offset + 1);
-#if PORT==DOS
-					for (j = 0; j < 32; ++j)
-					{
-						name[j] = GET_BYTE(string_table + name_id + j);
-					}
-					name[32] = '\0';
-#else
+
 					name = (char *) &program[string_table + name_id];
-#endif
 
 					if (jbi_stricmp(message_buffer, name) == 0)
 					{
@@ -586,15 +470,8 @@ JBI_RETURN_TYPE jbi_execute
 			{
 				name_id = GET_DWORD(action_table + (12 * i));
 
-#if PORT==DOS
-				for (j = 0; j < 32; ++j)
-				{
-					name[j] = GET_BYTE(string_table + name_id + j);
-				}
-				name[32] = '\0';
-#else
+
 				name = (char *) &program[string_table + name_id];
-#endif
 
 				if (jbi_stricmp(action, name) == 0)
 				{
@@ -632,15 +509,9 @@ JBI_RETURN_TYPE jbi_execute
 					if (init_list != NULL)
 					{
 						name_id = GET_DWORD(proc_table + (13 * i));
-#if PORT==DOS
-						for (j = 0; j < 32; ++j)
-						{
-							name[j] = GET_BYTE(string_table + name_id + j);
-						}
-						name[32] = '\0';
-#else
+
 						name = (char *) &program[string_table + name_id];
-#endif
+
 						count = 0;
 						while (init_list[count] != NULL)
 						{
@@ -1373,24 +1244,12 @@ JBI_RETURN_TYPE jbi_execute
 			*	PRINT add string
 			*	...argument 0 is string ID
 			*/
-#if PORT==DOS
-			long_index = string_table + args[0];
-			index2 = jbi_strlen(message_buffer);
 
-			do
-			{
-				i = GET_BYTE(long_index);
-				message_buffer[index2] = (char) i;
-				++long_index;
-				++index2;
-			}
-			while ((i != '\0') && (index2 < JBIC_MESSAGE_LENGTH));
-#else
 			count = jbi_strlen(message_buffer);
 			jbi_strncpy(&message_buffer[count],
 				(char *) &program[string_table + args[0]],
 				JBIC_MESSAGE_LENGTH - count);
-#endif
+
 			message_buffer[JBIC_MESSAGE_LENGTH] = '\0';
 			break;
 
@@ -1521,16 +1380,6 @@ JBI_RETURN_TYPE jbi_execute
 					}
 				}
 
-#if PORT==DOS
-				/* for 16-bit version, allow writing in allocated buffers */
-				if ((version > 0) &&
-					((attributes[variable_id] & 0x9c) == 0x9c))
-				{
-					attributes[variable_id] &= ~0x04;
-					attributes[variable_id] |= 0x01;
-				}
-#endif
-
 				/* check that variable is a writable integer array */
 				if ((attributes[variable_id] & 0x1c) != 0x18)
 				{
@@ -1594,19 +1443,8 @@ JBI_RETURN_TYPE jbi_execute
 							long_index < variable_size[variable_id];
 							++long_index)
 						{
-#if PORT==DOS
-							if ((attributes[variable_id] & 0x02) &&
-								((long_index & 0x0000FFFF) == 0L))
-							{
-								/* initialized compressed Boolean array */
-								jbi_uncompress_page(variable_id,
-									(int) (long_index >> 16), version);
-								charptr_temp = jbi_aca_out_buffer;
-								long_index2 = long_index & 0xFFFF;
-							}
-#else
+
 							long_index2 = long_index;
-#endif
 
 							if (charptr_temp2[long_index2 >> 3] &
 								(1 << (long_index2 & 7)))
@@ -1624,16 +1462,6 @@ JBI_RETURN_TYPE jbi_execute
 						attributes[variable_id] |= 0x01;
 					}
 				}
-
-#if PORT==DOS
-				/* for 16-bit version, allow writing in allocated buffers */
-				if ((version > 0) &&
-					((attributes[variable_id] & 0x9c) == 0x8c))
-				{
-					attributes[variable_id] &= ~0x04;
-					attributes[variable_id] |= 0x01;
-				}
-#endif
 
 				/* check that variable is a writable Boolean array */
 				if ((attributes[variable_id] & 0x1c) != 0x08)
@@ -1749,87 +1577,7 @@ JBI_RETURN_TYPE jbi_execute
 					}
 				}
 
-#if PORT==DOS
-				if (((long_index & 0xFFFF0000) == 0) &&
-					((long_count & 0xFFFF0000) == 0))
-				{
-					variable_id = (unsigned int) args[0];
-					if ((attributes[variable_id] & 0x1e) == 0x0e)
-					{
-						/* initialized compressed Boolean array */
-						jbi_uncompress_page(variable_id,
-							(int) (long_index >> 16), version);
-						long_index &= 0x0000ffff;
-						charptr_temp = jbi_aca_out_buffer;
-					}
-					else
-					{
-						charptr_temp = (unsigned char *) variables[variable_id];
-					}
 
-					if (reverse)
-					{
-						/* allocate a buffer and reverse the data order */
-						charptr_temp2 = charptr_temp;
-						charptr_temp = jbi_malloc((unsigned int)
-							((long_count >> 3L) + 1L));
-
-						if (charptr_temp == NULL)
-						{
-							status = JBIC_OUT_OF_MEMORY;
-							break;
-						}
-						else
-						{
-							long_temp = long_index + long_count - 1;
-							long_index2 = 0;
-							while (long_index2 < long_count)
-							{
-								if (charptr_temp2[long_temp >> 3] &
-									(1 << (long_temp & 7)))
-								{
-									charptr_temp[long_index2 >> 3] |=
-										(1 << (long_index2 & 7));
-								}
-								else
-								{
-									charptr_temp[long_index2 >> 3] &=
-										~(1 << (long_index2 & 7));
-								}
-
-								--long_temp;
-								++long_index2;
-							}
-						}
-					}
-
-					if (opcode == 0x51)	/* DS */
-					{
-						status = jbi_do_drscan((unsigned int) long_count,
-							charptr_temp, (unsigned long) long_index);
-					}
-					else	/* IS */
-					{
-						status = jbi_do_irscan((unsigned int) long_count,
-							charptr_temp, (unsigned int) long_index);
-					}
-
-					if (reverse) jbi_free(charptr_temp);
-				}
-				else if ((opcode == 0x51) && !reverse)
-				{
-					status = jbi_do_drscan_multi_page(
-						(unsigned int) args[0],
-						(unsigned long) long_count,
-						(unsigned long) long_index, version);
-				}
-				else
-				{
-					/* reverse multi-page scans are not supported */
-					/* multi-page IR scans are not supported */
-					status = JBIC_BOUNDS_ERROR;
-				}
-#else
 				charptr_temp = (unsigned char *) variables[args[0]];
 
 				if (reverse)
@@ -1876,7 +1624,7 @@ JBI_RETURN_TYPE jbi_execute
 					status = jbi_do_irscan((unsigned int) long_count,
 						charptr_temp, (unsigned int) long_index);
 				}
-#endif
+
 
 				if (reverse && (charptr_temp != NULL))
 				{
@@ -1989,16 +1737,8 @@ JBI_RETURN_TYPE jbi_execute
 			*/
 			IF_CHECK_STACK(1)
 			{
-#if PORT==DOS
-				name_id = args[0];
-				for (j = 0; j < 32; ++j)
-				{
-					name[j] = GET_BYTE(string_table + name_id + j);
-				}
-				name[32] = '\0';
-#else
+
 				name = (char *) &program[string_table + args[0]];
-#endif
 				long_temp = stack[--stack_ptr];
 				jbi_export_integer(name, long_temp);
 			}
@@ -2074,15 +1814,7 @@ JBI_RETURN_TYPE jbi_execute
 					}
 					else
 					{
-#if PORT==DOS
-						if ((attributes[variable_id] & 0x1e) == 0x0e)
-						{
-							/* initialized compressed Boolean array */
-							jbi_uncompress_page(variable_id,
-								(int) (stack[stack_ptr - 1] >> 16), version);
-							charptr_temp = jbi_aca_out_buffer;
-						}
-#endif
+
 						long_temp = 0L;
 
 						for (i = 0; i < count; ++i)
@@ -2188,16 +1920,8 @@ JBI_RETURN_TYPE jbi_execute
 					bad_opcode = 1;
 					break;
 				}
-#if PORT==DOS
-				name_id = args[0];
-				for (j = 0; j < 32; ++j)
-				{
-					name[j] = GET_BYTE(string_table + name_id + j);
-				}
-				name[32] = '\0';
-#else
+
 				name = (char *) &program[string_table + args[0]];
-#endif
 				variable_id = (unsigned int) stack[--stack_ptr];
 				long_index = stack[--stack_ptr];	/* right index */
 				long_index2 = stack[--stack_ptr];	/* left index */
@@ -2213,17 +1937,6 @@ JBI_RETURN_TYPE jbi_execute
 
 				charptr_temp = (unsigned char *) variables[variable_id];
 				charptr_temp2 = NULL;
-
-#if PORT==DOS
-				if ((attributes[variable_id] & 0x1e) == 0x0e)
-				{
-					/* initialized compressed Boolean array */
-					jbi_uncompress_page(variable_id,
-						(int) (long_index >> 16), version);
-					charptr_temp = jbi_aca_out_buffer;
-					long_index &= 0x0000FFFF;
-				}
-#endif
 
 				if ((long_index & 7L) != 0)
 				{
@@ -2376,19 +2089,9 @@ JBI_RETURN_TYPE jbi_execute
 							long_index < variable_size[variable_id];
 							++long_index)
 						{
-#if PORT==DOS
-							if ((attributes[variable_id] & 0x02) &&
-								((long_index & 0x0000FFFF) == 0L))
-							{
-								/* initialized compressed Boolean array */
-								jbi_uncompress_page(variable_id,
-									(int) (long_index >> 16), version);
-								charptr_temp = jbi_aca_out_buffer;
-								long_index2 = long_index & 0xFFFF;
-							}
-#else
+
 							long_index2 = long_index;
-#endif
+
 
 							if (charptr_temp2[long_index2 >> 3] &
 								(1 << (long_index2 & 7)))
@@ -2407,29 +2110,12 @@ JBI_RETURN_TYPE jbi_execute
 					}
 				}
 
-#if PORT==DOS
-				/* for 16-bit version, allow writing in allocated buffers */
-				if ((version > 0) &&
-					((attributes[variable_id] & 0x9c) == 0x8c))
-				{
-					attributes[variable_id] &= ~0x04;
-					attributes[variable_id] |= 0x01;
-				}
-#endif
+
 
 				charptr_temp = (unsigned char *) variables[args[1]];
 				charptr_temp2 = (unsigned char *) variables[args[0]];
 
-#if PORT==DOS
-				variable_id = (unsigned int) args[0];
-				if ((attributes[variable_id] & 0x1e) == 0x0e)
-				{
-					/* initialized compressed Boolean array */
-					jbi_uncompress_page(variable_id,
-						(int) (copy_index >> 16), version);
-					charptr_temp2 = jbi_aca_out_buffer;
-				}
-#endif
+
 
 				/* check that destination is a writable Boolean array */
 				if ((attributes[args[1]] & 0x1c) != 0x08)
@@ -2547,19 +2233,8 @@ JBI_RETURN_TYPE jbi_execute
 							long_index < variable_size[variable_id];
 							++long_index)
 						{
-#if PORT==DOS
-							if ((attributes[variable_id] & 0x02) &&
-								((long_index & 0x0000FFFF) == 0L))
-							{
-								/* initialized compressed Boolean array */
-								jbi_uncompress_page(variable_id,
-									(int) (long_index >> 16), version);
-								charptr_temp = jbi_aca_out_buffer;
-								long_index2 = long_index & 0xFFFF;
-							}
-#else
+
 							long_index2 = long_index;
-#endif
 
 							if (charptr_temp2[long_index2 >> 3] &
 								(1 << (long_index2 & 7)))
@@ -2578,30 +2253,8 @@ JBI_RETURN_TYPE jbi_execute
 					}
 				}
 
-#if PORT==DOS
-				/* for 16-bit version, allow writing in allocated buffers */
-				if ((version > 0) &&
-					((attributes[variable_id] & 0x9c) == 0x8c))
-				{
-					attributes[variable_id] &= ~0x04;
-					attributes[variable_id] |= 0x01;
-				}
-#endif
-
 				charptr_temp = (unsigned char *) variables[args[0]];
 				charptr_temp2 = (unsigned char *) variables[args[1]];
-
-#if PORT==DOS
-				variable_id = (unsigned int) args[0];
-				if ((attributes[variable_id] & 0x1e) == 0x0e)
-				{
-					/* initialized compressed Boolean array */
-					jbi_uncompress_page(variable_id,
-						(int) (scan_index >> 16), version);
-					scan_index &= 0x0000ffff;
-					charptr_temp = jbi_aca_out_buffer;
-				}
-#endif
 
 				if ((version > 0) &&
 					((long_count > capture_count) || (long_count > scan_count)))
@@ -2732,25 +2385,7 @@ JBI_RETURN_TYPE jbi_execute
 				}
 				else
 				{
-#if PORT==DOS
-					variable_id = (unsigned int) args[0];
-					if ((attributes[variable_id] & 0x1e) == 0x0e)
-					{
-						jbi_uncompress_page(variable_id,
-							(int) (index1 >> 16), version);
-						index1 &= 0x0000ffff;
-						source1 = jbi_aca_out_buffer;
-					}
 
-					variable_id = (unsigned int) args[1];
-					if ((attributes[variable_id] & 0x1e) == 0x0e)
-					{
-						jbi_uncompress_page(variable_id,
-							(int) (index2 >> 16), version);
-						index2 &= 0x0000ffff;
-						source2 = jbi_aca_out_buffer;
-					}
-#endif
 					count = (unsigned int) long_count;
 
 					for (i = 0; i < count; ++i)
@@ -2876,16 +2511,6 @@ JBI_RETURN_TYPE jbi_get_note
 	char *value_ptr;
 	int i;
 
-#if PORT==DOS
-	int count = 0;
-	int done = 0;
-	long long_index = 0;
-	char key_buffer[256];
-	char value_buffer[256];
-
-	jbi_program = program;
-#endif
-
 	/*
 	*	Read header information
 	*/
@@ -2914,44 +2539,16 @@ JBI_RETURN_TYPE jbi_get_note
 			*/
 			for (i = 0; (i < (int) note_count) && (status != JBIC_SUCCESS); ++i)
 			{
-#if PORT==DOS
-				done = 0;
-				count = 0;
-				long_index = note_strings + GET_DWORD(note_table + (8 * i));
-				while ((count < 255) && !done)
-				{
-					key_buffer[count] = GET_BYTE(long_index);
-					if (key_buffer[count] == '\0') done = 1;
-					++long_index;
-					++count;
-				}
-				key_buffer[255] = '\0';
-				key_ptr = key_buffer;
-#else
+
 				key_ptr = (char *) &program[note_strings +
 					GET_DWORD(note_table + (8 * i))];
-#endif
 				if ((key != NULL) && (jbi_stricmp(key, key_ptr) == 0))
 				{
 					status = JBIC_SUCCESS;
 
-#if PORT==DOS
-					done = 0;
-					count = 0;
-					long_index = note_strings + GET_DWORD(note_table + (8 * i) + 4);
-					while ((count < 255) && !done)
-					{
-						value_buffer[count] = GET_BYTE(long_index);
-						if (value_buffer[count] == '\0') done = 1;
-						++long_index;
-						++count;
-					}
-					value_buffer[255] = '\0';
-					value_ptr = value_buffer;
-#else
+
 					value_ptr = (char *) &program[note_strings +
 						GET_DWORD(note_table + (8 * i) + 4)];
-#endif
 
 					if (value != NULL)
 					{
@@ -2975,44 +2572,17 @@ JBI_RETURN_TYPE jbi_get_note
 
 				if (key != NULL)
 				{
-#if PORT==DOS
-					done = 0;
-					count = 0;
-					long_index = note_strings +
-						GET_DWORD(note_table + (8 * i));
 
-					while ((count < length) && !done)
-					{
-						key[count] = GET_BYTE(long_index);
-						if (key[count] == '\0') done = 1;
-						++long_index;
-						++count;
-					}
-#else
 					jbi_strncpy(key, (char *) &program[note_strings +
 						GET_DWORD(note_table + (8 * i))], length);
-#endif
+
 				}
 
 				if (value != NULL)
 				{
-#if PORT==DOS
-					done = 0;
-					count = 0;
-					long_index = note_strings +
-						GET_DWORD(note_table + (8 * i) + 4);
 
-					while ((count < length) && !done)
-					{
-						value[count] = GET_BYTE(long_index);
-						if (value[count] == '\0') done = 1;
-						++long_index;
-						++count;
-					}
-#else
 					jbi_strncpy(value, (char *) &program[note_strings +
 						GET_DWORD(note_table + (8 * i) + 4)], length);
-#endif
 				}
 
 				*offset = i + 1;
@@ -3051,10 +2621,6 @@ JBI_RETURN_TYPE jbi_check_crc
 	unsigned long first_word = 0L;
 	int version = 0;
 	int delta = 0;
-
-#if PORT==DOS
-	jbi_program = program;
-#endif
 
 	if (program_size > 52L)
 	{
@@ -3117,10 +2683,6 @@ JBI_RETURN_TYPE jbi_get_file_info
 	unsigned long first_word = 0;
 	int version = 0;
 
-#if PORT==DOS
-	jbi_program = program;
-#endif
-
 	/*
 	*	Read header information
 	*/
@@ -3173,11 +2735,6 @@ JBI_RETURN_TYPE jbi_get_action_info
 	unsigned long act_proc_name = 0L;
 	unsigned char act_proc_attribute = 0;
 
-#if PORT==DOS
-	int i, length;
-	jbi_program = program;
-#endif
-
 	/*
 	*	Read header information
 	*/
@@ -3200,47 +2757,12 @@ JBI_RETURN_TYPE jbi_get_action_info
 				act_desc_id = GET_DWORD(action_table + (12 * index) + 4);
 				act_proc_id = GET_DWORD(action_table + (12 * index) + 8);
 
-#if PORT==DOS
-				length = 0;
-				while (GET_BYTE(string_table + act_name_id + length) != 0) ++length;
-				*name = jbi_malloc(length + 1);
-				if (*name == NULL)
-				{
-					status = JBIC_OUT_OF_MEMORY;
-				}
-				else
-				{
-					for (i = 0; i < length; ++i)
-					{
-						(*name)[i] = GET_BYTE(string_table + act_name_id + i);
-					}
-					(*name)[length] = '\0';
-				}
-#else
+
 				*name = (char *) &program[string_table + act_name_id];
-#endif
 
 				if (act_desc_id < (note_strings - string_table))
 				{
-#if PORT==DOS
-					length = 0;
-					while (GET_BYTE(string_table + act_desc_id + length) != 0) ++length;
-					*description = jbi_malloc(length + 1);
-					if (*description == NULL)
-					{
-						status = JBIC_OUT_OF_MEMORY;
-					}
-					else
-					{
-						for (i = 0; i < length; ++i)
-						{
-							(*description)[i] = GET_BYTE(string_table + act_desc_id + i);
-						}
-						(*description)[length] = '\0';
-					}
-#else
 					*description = (char *) &program[string_table + act_desc_id];
-#endif
 				}
 
 				do
@@ -3257,27 +2779,10 @@ JBI_RETURN_TYPE jbi_get_action_info
 					}
 					else
 					{
-#if PORT==DOS
-						length = 0;
-						while (GET_BYTE(string_table + act_proc_name + length) != 0) ++length;
-						procptr->name = jbi_malloc(length + 1);
-						if (procptr->name == NULL)
-						{
-							status = JBIC_OUT_OF_MEMORY;
-						}
-						else
-						{
-							for (i = 0; i < length; ++i)
-							{
-								procptr->name[i] =
-									GET_BYTE(string_table + act_proc_name + i);
-							}
-							procptr->name[length] = '\0';
-						}
-#else
+
 						procptr->name = (char *)
 							&program[string_table + act_proc_name];
-#endif
+
 						procptr->attributes = act_proc_attribute;
 						procptr->next = NULL;
 

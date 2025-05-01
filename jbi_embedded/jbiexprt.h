@@ -41,27 +41,17 @@
 #define JBIC_SUCCESS            0
 #define JBIC_OUT_OF_MEMORY      1
 #define JBIC_IO_ERROR           2
-/* #define JAMC_SYNTAX_ERROR       3 */
 #define JBIC_UNEXPECTED_END     4
 #define JBIC_UNDEFINED_SYMBOL   5
-/* #define JAMC_REDEFINED_SYMBOL   6 */
 #define JBIC_INTEGER_OVERFLOW   7
 #define JBIC_DIVIDE_BY_ZERO     8
 #define JBIC_CRC_ERROR          9
 #define JBIC_INTERNAL_ERROR    10
 #define JBIC_BOUNDS_ERROR      11
-/* #define JAMC_TYPE_MISMATCH     12 */
-/* #define JAMC_ASSIGN_TO_CONST   13 */
-/* #define JAMC_NEXT_UNEXPECTED   14 */
-/* #define JAMC_POP_UNEXPECTED    15 */
-/* #define JAMC_RETURN_UNEXPECTED 16 */
-/* #define JAMC_ILLEGAL_SYMBOL    17 */
 #define JBIC_VECTOR_MAP_FAILED 18
 #define JBIC_USER_ABORT        19
 #define JBIC_STACK_OVERFLOW    20
 #define JBIC_ILLEGAL_OPCODE    21
-/* #define JAMC_PHASE_ERROR       22 */
-/* #define JAMC_SCOPE_ERROR       23 */
 #define JBIC_ACTION_NOT_FOUND  24
 
 /****************************************************************************/
@@ -70,22 +60,9 @@
 /*																			*/
 /****************************************************************************/
 
-/*
-*	For DOS port, program data is stored in a set of 16K pages, accessed
-*	through a pointer table.  For 32-bit version, the buffer is continuous.
-*	The macro GET_BYTE gets a single byte for either case.
-*/
-#if PORT==DOS
-#define PROGRAM_PTR unsigned char **
-#else
 #define PROGRAM_PTR unsigned char *
-#endif
 
-#if PORT==DOS
-#define GET_BYTE(x) (jbi_program[(x) >> 14L][(x) & 0x3fffL])
-#else
 #define GET_BYTE(x) (program[x])
-#endif
 
 #define GET_WORD(x) \
 	(((((unsigned short) GET_BYTE(x)) << 8) & 0xFF00) | \
@@ -116,10 +93,6 @@ JBI_PROCINFO;
 /*	Global Data Prototypes													*/
 /*																			*/
 /****************************************************************************/
-
-#if PORT==DOS
-extern unsigned char jbi_aca_out_buffer[8192 + 1024];
-#endif
 
 extern PROGRAM_PTR jbi_program;
 
@@ -212,20 +185,6 @@ void jbi_export_boolean_array
 void jbi_delay
 (
 	long microseconds
-);
-
-int jbi_vector_map
-(
-	int signal_count,
-	char **signals
-);
-
-int jbi_vector_io
-(
-	int signal_count,
-	long *dir_vect,
-	long *data_vect,
-	long *capture_vect
 );
 
 void *jbi_malloc

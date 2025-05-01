@@ -153,12 +153,4 @@ void jbi_free_jtag_padding_buffers
 	int reset_jtag
 );
 
-JBI_RETURN_TYPE jbi_do_drscan_multi_page
-(
-	unsigned int variable_id,
-	unsigned long long_count,
-	unsigned long long_index,
-	int version
-);
-
 #endif /* INC_JBIJTAG_H */
